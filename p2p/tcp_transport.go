@@ -32,7 +32,7 @@ func formatAddr(addr net.Addr) string {
 		if tcpAddr.IP.IsLoopback() {
 			return fmt.Sprintf("127.0.0.1:%d", tcpAddr.Port)
 		}
-		fmt.Printf(addr.String())
+		fmt.Print(addr.String())
 		// For other IPv6 addresses, use IPv4 if available
 		if ipv4 := tcpAddr.IP.To4(); ipv4 != nil {
 			return fmt.Sprintf("%s:%d", ipv4.String(), tcpAddr.Port)
