@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"strings"
 )
 
-func CASPathTransformFun(key string) pathKey {
+func CASPathTransformFunc(key string) pathKey {
 	hash := sha1.Sum([]byte(key))          // [20]byte =>slice
 	hashStr := hex.EncodeToString(hash[:]) // this trick
 
@@ -34,6 +35,14 @@ func CASPathTransformFun(key string) pathKey {
 type pathKey struct {
 	Pathname string
 	Filename string
+}
+
+func (p pathKey) FirstPathName() string {
+	paths := strings.Split(p.Pathname, "/") 
+	if len(paths)==0 {
+		return ""
+	}
+	return paths[0]
 }
 
 func (p pathKey) FullPath() string {
@@ -60,16 +69,46 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
+func (s *Store) Has(key string) bool {
+	pathKey := s.PathTransformFunc(key)
+	_, err := os.Stat(pathKey.FullPath())
+	if err == fs.ErrNotExist {
+		return false
+	}
+	return true
+}
+
+
+func (s *Store) Delete(key string) error {
+	pathKey := s.PathTransformFunc(key)
+
+	defer func() {
+		log.Printf("deleted [%s] from the disk", pathKey.Filename)
+	}()
+
+	return os.RemoveAll(pathKey.FirstPathName())
+}
 func (s *Store) Read(key string) (io.Reader, error) {
+	fmt.Printf("Reading file with key: %s\n", key) // Log the key being read
+
 	f, err := s.readStream(key)
 	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
 		return nil, err
 	}
 	defer f.Close()
 
 	buf := new(bytes.Buffer)
 	_, err = io.Copy(buf, f)
-	return buf, err
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return nil, err
+	}
+
+	content := buf.String()
+	fmt.Printf("File content:\n%s\n", content) // Log the content
+
+	return buf, nil
 }
 
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
