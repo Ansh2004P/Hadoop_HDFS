@@ -104,6 +104,10 @@ func (s *Store) Delete(key string) error {
 	return os.RemoveAll(pathKeyWithRoot)
 }
 
+func (s *Store) Write(key string, r io.Reader) error {
+	return s.writeStream(key, r)
+} 
+
 func (s *Store) Read(key string) (io.Reader, error) {
 	fmt.Printf("Reading file with key: %s\n", key) // Log the key being read
 
