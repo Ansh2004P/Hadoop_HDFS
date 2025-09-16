@@ -46,7 +46,7 @@ type Payload struct {
 	Data []byte
 }
 
-func (s *FileServer) broadcast(p *Payload) error {
+func (s *FileServer) broadcast(msg *Message) error {
 	peers := []io.Writer{}
 
 	for _, peer := range s.peers {
@@ -54,7 +54,17 @@ func (s *FileServer) broadcast(p *Payload) error {
 	}
 
 	mw := io.MultiWriter(peers...)
-	return gob.NewEncoder(mw).Encode(p)
+	return gob.NewEncoder(mw).Encode(msg)
+}
+
+type Message struct {
+	From    string
+	Payload any
+}
+
+type DataMessage struct {
+	Key  string
+	Data []byte
 }
 
 func (s *FileServer) StoreData(key string, r io.Reader) error {
@@ -69,12 +79,15 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 		fmt.Println("Error storing data:", err)
 		return err
 	}
-	p := &Payload{
+	p := &DataMessage{
 		Key:  key,
 		Data: buf.Bytes(),
 	}
 	fmt.Println(buf.String())
-	return s.broadcast(p)
+	return s.broadcast(&Message{
+		From:    "TODO",
+		Payload: p,
+	})
 }
 
 func (s *FileServer) Stop() {
@@ -90,6 +103,11 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 
 	return nil
 }
+
+func (s *FileServer) handlePayload(p *Payload) error {
+	return nil
+}
+
 func (s *FileServer) loop() {
 	defer func() {
 		log.Println("File server stopped due to user quit action")
@@ -100,15 +118,26 @@ func (s *FileServer) loop() {
 	for {
 		select {
 		case msg := <-s.Transport.Consume():
-			var p Payload
-			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
-				log.Fatal(err)
+			var m Message
+			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
+				log.Println(err)
 			}
-			fmt.Printf("Hello %+v\n", p)
+
+			if err := s.handleMessage(&m); err != nil {
+				log.Println(err)
+			}
 		case <-s.quitch:
 			return
 		}
 	}
+}
+
+func (s *FileServer) handleMessage(msg *Message) error {
+	switch v := msg.Payload.(type) {
+	case *DataMessage:
+		fmt.Printf("Received Data %v\n", v)
+	}
+	return nil
 }
 
 func (s *FileServer) bootStrapNetwork() error {
