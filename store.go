@@ -109,7 +109,6 @@ func (s *Store) Write(key string, r io.Reader) error {
 } 
 
 func (s *Store) Read(key string) (io.Reader, error) {
-	fmt.Printf("Reading file with key: %s\n", key) // Log the key being read
 
 	f, err := s.readStream(key)
 	if err != nil {
