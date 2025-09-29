@@ -13,7 +13,7 @@ func TestTCPTransport(t *testing.T) {
 		Decoder:       DefaultDecoder{},
 	}
 	tr := NewTCPTransport(opts)
-	assert.Equal(t, tr.ListenAddr, opts.ListenAddr)
+	assert.Equal(t, tr.ListenAddr, ":3000")
 
 	assert.Nil(t, tr.ListenAndAccept())
 }

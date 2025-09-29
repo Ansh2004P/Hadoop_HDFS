@@ -10,42 +10,31 @@ import (
 
 // TCPPeer represents the remote node over a TCP established connection.
 type TCPPeer struct {
-	// conn is underlying connection of peer. Which in this case
+	// The underlying connection of the peer. Which in this case
 	// is a TCP connection.
 	net.Conn
-
-	// if we dial and retrieve a conn =>outbound ==true
-	// if we accept and retrieve a conn =>inbound ==true or outbound == false
+	// if we dial and retrieve a conn => outbound == true
+	// if we accept and retrieve a conn => outbound == false
 	outbound bool
 
-	Wg *sync.WaitGroup
+	wg *sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		Conn:     conn,
 		outbound: outbound,
-		Wg:       &sync.WaitGroup{},
+		wg:       &sync.WaitGroup{},
 	}
+}
+
+func (p *TCPPeer) CloseStream() {
+	p.wg.Done()
 }
 
 func (p *TCPPeer) Send(b []byte) error {
 	_, err := p.Conn.Write(b)
 	return err
-}
-
-func formatAddr(addr net.Addr) string {
-	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
-		if tcpAddr.IP.IsLoopback() {
-			return fmt.Sprintf("127.0.0.1:%d", tcpAddr.Port)
-		}
-		fmt.Print(addr.String())
-		// For other IPv6 addresses, use IPv4 if available
-		if ipv4 := tcpAddr.IP.To4(); ipv4 != nil {
-			return fmt.Sprintf("%s:%d", ipv4.String(), tcpAddr.Port)
-		}
-	}
-	return addr.String()
 }
 
 type TCPTransportOpts struct {
@@ -68,23 +57,24 @@ func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	}
 }
 
+// Addr implements the Transport interface return the address
+// the transport is accepting connections.
 func (t *TCPTransport) Addr() string {
 	return t.ListenAddr
 }
 
-// Consume implements the Transport interface, which will return a read-only channel
+// Consume implements the Tranport interface, which will return read-only channel
 // for reading the incoming messages received from another peer in the network.
 func (t *TCPTransport) Consume() <-chan RPC {
-	// fmt.Printf("TCP: consume channel created\n");
 	return t.rpcch
 }
 
-// Close implements the Transport interface
+// Close implements the Transport interface.
 func (t *TCPTransport) Close() error {
 	return t.listener.Close()
 }
 
-// Dial implements the Transport interface
+// Dial implements the Transport interface.
 func (t *TCPTransport) Dial(addr string) error {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -106,7 +96,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 	go t.startAcceptLoop()
 
-	log.Printf("TCP: listening on %s\n", t.ListenAddr)
+	log.Printf("TCP transport listening on port: %s\n", t.ListenAddr)
 
 	return nil
 }
@@ -119,11 +109,8 @@ func (t *TCPTransport) startAcceptLoop() {
 		}
 
 		if err != nil {
-			fmt.Printf("TCP: accept error: %s\n", err)
+			fmt.Printf("TCP accept error: %s\n", err)
 		}
-
-		clientIP := formatAddr(conn.RemoteAddr())
-		fmt.Printf("New client connected from: %s on %s\n", clientIP, t.ListenAddr)
 
 		go t.handleConn(conn, false)
 	}
@@ -133,20 +120,18 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	var err error
 
 	defer func() {
-		fmt.Printf("Dropping peer connection: %s", err)
+		fmt.Printf("dropping peer connection: %s", err)
 		conn.Close()
 	}()
 
 	peer := NewTCPPeer(conn, outbound)
 
-	if err := t.HandshakeFunc(peer); err != nil {
-		fmt.Printf("DEBUG: Handshake failed: %v\n", err)
+	if err = t.HandshakeFunc(peer); err != nil {
 		return
 	}
 
 	if t.OnPeer != nil {
-		if err := t.OnPeer(peer); err != nil {
-			fmt.Printf("DEBUG: OnPeer failed: %v\n", err)
+		if err = t.OnPeer(peer); err != nil {
 			return
 		}
 	}
@@ -160,10 +145,15 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 		}
 
 		rpc.From = conn.RemoteAddr().String()
-		peer.Wg.Add(1)
-		fmt.Println("Waiting till Stream is done...")
+
+		if rpc.Stream {
+			peer.wg.Add(1)
+			fmt.Printf("[%s] incoming stream, waiting...\n", conn.RemoteAddr())
+			peer.wg.Wait()
+			fmt.Printf("[%s] stream closed, resuming read loop\n", conn.RemoteAddr())
+			continue
+		}
+
 		t.rpcch <- rpc
-		peer.Wg.Wait()
-		fmt.Println("stream done continuing normal read loop!!!")
 	}
 }
