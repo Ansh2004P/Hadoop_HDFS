@@ -1,4 +1,4 @@
-# Hadoop_HDFS – Encrypted Peer-to-Peer File Store
+# ShardVault – Encrypted Peer-to-Peer File Store
 
 ## What This Project Does
 This Go project stands up a tiny peer-to-peer storage cluster that mirrors Hadoop-style replication on a much smaller scale. Three file servers spin up, talk over a custom TCP transport, encrypt every byte on the wire with AES-CTR, store content on disk using a content-addressable layout, delete local copies, and then fetch the missing payload back from peers to prove replication works.
